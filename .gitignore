@@ -26,7 +26,7 @@ replay_pid*
 # Gradle build folder
 /build/
 .gradle/
-# Ignoriši sve u gradle folderu
 Backend/Booking/gradle/*
+!Backend/Booking/gradle/wrapper/
 !Backend/Booking/gradle/wrapper/gradle-wrapper.jar
 !Backend/Booking/gradle/wrapper/gradle-wrapper.properties
