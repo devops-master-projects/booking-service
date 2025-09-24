@@ -44,8 +44,8 @@ public class ReservationRequestService {
     }
 
 
-    public List<ReservationRequestResponseDto> findByGuest(UUID guestId) {
-        return repository.findByGuestId(guestId).stream()
+    public List<ReservationRequestResponseDto> findByGuest(UUID guestId, UUID accommodationId) {
+        return repository.findByGuestIdAndAccommodationId(guestId, accommodationId).stream()
                 .map(this::toDto)
                 .collect(Collectors.toList());
     }
@@ -73,6 +73,10 @@ public class ReservationRequestService {
         dto.setEndDate(req.getEndDate());
         dto.setGuestCount(req.getGuestCount());
         dto.setStatus(req.getStatus());
+        dto.setGuestFirstName(req.getGuestFirstName());
+        dto.setGuestEmail(req.getGuestEmail());
+        dto.setGuestLastName(req.getGuestLastName());
+        dto.setCreatedAt(req.getCreatedAt());
         return dto;
     }
 

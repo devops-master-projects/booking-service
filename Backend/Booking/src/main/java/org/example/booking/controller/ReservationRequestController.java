@@ -44,11 +44,12 @@ public class ReservationRequestController {
 
 
     /** TODO! izbaciti guestId rezervacije ce se uzeti iz tokena!*/
-    @GetMapping("/guest/{guestId}")
+    @GetMapping("/guest/{guestId}/{accommodationId}")
     public ResponseEntity<List<ReservationRequestResponseDto>> getByGuest(
-            @PathVariable UUID guestId
+            @PathVariable UUID guestId,
+            @PathVariable UUID accommodationId
     ) {
-        return ResponseEntity.ok(service.findByGuest(guestId));
+        return ResponseEntity.ok(service.findByGuest(guestId, accommodationId));
     }
 
 
