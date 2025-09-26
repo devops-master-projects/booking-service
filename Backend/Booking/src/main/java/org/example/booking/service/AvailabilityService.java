@@ -1,10 +1,7 @@
 package org.example.booking.service;
 import lombok.RequiredArgsConstructor;
 import org.example.booking.dto.CalendarIntervalDto;
-import org.example.booking.model.Availability;
-import org.example.booking.model.PriceType;
-import org.example.booking.model.Reservation;
-import org.example.booking.model.ReservationStatus;
+import org.example.booking.model.*;
 import org.example.booking.repository.AvailabilityRepository;
 import org.example.booking.repository.ReservationRepository;
 import org.springframework.stereotype.Service;
@@ -55,23 +52,21 @@ public class AvailabilityService {
         return availabilityRepository.save(availability);
     }
 
-    public Set<CalendarIntervalDto> getCalendar(UUID accommodationId, LocalDate startDate, LocalDate endDate) {
+
+    private Set<CalendarIntervalDto> collectCalendarIntervals(
+            UUID accommodationId, LocalDate startDate, LocalDate endDate, boolean includeReservations) {
+
         if (startDate == null) startDate = LocalDate.now();
         if (endDate == null) endDate = startDate.plusMonths(3);
 
-        Set<Availability> availabilities =
-                availabilityRepository.findByAccommodationIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
-                        accommodationId, endDate, startDate
-                );
-
-        Set<Reservation> reservations =
-                reservationRepository.findByRequest_AccommodationIdAndRequest_StartDateLessThanEqualAndRequest_EndDateGreaterThanEqual(
-                        accommodationId, endDate, startDate
-                );
-
         Set<CalendarIntervalDto> result = new HashSet<>();
 
-        // availabilities
+        // availabilities - uzmi samo one koji su AVAILABLE
+        Set<Availability> availabilities =
+                availabilityRepository.findByAccommodationIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+                        accommodationId, AvailabilityStatus.AVAILABLE, endDate, startDate
+                );
+
         for (Availability a : availabilities) {
             result.add(new CalendarIntervalDto(
                     a.getId(),
@@ -83,20 +78,41 @@ public class AvailabilityService {
             ));
         }
 
-        // reservations
-        for (Reservation r : reservations) {
-            result.add(new CalendarIntervalDto(
-                    r.getId(),
-                    r.getRequest().getStartDate(),
-                    r.getRequest().getEndDate(),
-                    "RESERVED",
-                    null,
-                    null // rezervacija nema priceType
-            ));
+        if (includeReservations) {
+            Set<Reservation> reservations = reservationRepository
+                    .findByRequest_AccommodationIdAndRequest_StartDateLessThanEqualAndRequest_EndDateGreaterThanEqualAndStatus(
+                            accommodationId,
+                            endDate,
+                            startDate,
+                            ReservationStatus.CONFIRMED
+                    );
+
+
+            for (Reservation r : reservations) {
+                result.add(new CalendarIntervalDto(
+                        r.getId(),
+                        r.getRequest().getStartDate(),
+                        r.getRequest().getEndDate(),
+                        "RESERVED",
+                        null,
+                        null
+                ));
+            }
         }
 
         return result;
     }
+
+
+    public Set<CalendarIntervalDto> getCalendar(UUID accommodationId, LocalDate startDate, LocalDate endDate) {
+        return collectCalendarIntervals(accommodationId, startDate, endDate, false);
+    }
+
+    public Set<CalendarIntervalDto> getCalendarHost(UUID accommodationId, LocalDate startDate, LocalDate endDate) {
+        return collectCalendarIntervals(accommodationId, startDate, endDate, true);
+    }
+
+
     public void deleteAvailability(UUID id) {
         Availability availability = availabilityRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Availability not found"));

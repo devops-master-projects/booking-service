@@ -44,6 +44,7 @@ public class AvailabilityController {
         return ResponseEntity.ok(availability);
     }
 
+    // TODO: iz uloge ove dve metode mogu da se ekstrahuju
     @GetMapping("/{accommodationId}/calendar")
     public ResponseEntity<Set<CalendarIntervalDto>> getCalendar(
             @PathVariable UUID accommodationId,
@@ -51,6 +52,17 @@ public class AvailabilityController {
             @RequestParam(required = false) LocalDate endDate) {
 
         Set<CalendarIntervalDto> calendar = availabilityService.getCalendar(accommodationId, startDate, endDate);
+        System.out.println(calendar.size());
+        return ResponseEntity.ok(calendar);
+    }
+
+    @GetMapping("/{accommodationId}/calendarHost")
+    public ResponseEntity<Set<CalendarIntervalDto>> getCalendarHost(
+            @PathVariable UUID accommodationId,
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate) {
+
+        Set<CalendarIntervalDto> calendar = availabilityService.getCalendarHost(accommodationId, startDate, endDate);
         System.out.println(calendar.size());
         return ResponseEntity.ok(calendar);
     }

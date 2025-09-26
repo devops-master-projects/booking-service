@@ -75,4 +75,14 @@ public class ReservationRequestController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{requestId}/cancel")
+    public ResponseEntity<String> cancelReservation(@PathVariable UUID requestId) {
+        try {
+            service.cancelReservation(requestId);
+            return ResponseEntity.ok("Reservation cancelled successfully");
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(ex.getMessage());
+        }
+    }
+
 }

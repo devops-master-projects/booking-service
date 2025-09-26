@@ -24,4 +24,6 @@ public class ReservationRequestResponseDto {
     int guestCount;
     LocalDateTime createdAt;
     RequestStatus status;
+    boolean connectedReservationCancelled;
+    int cancellationsCount;
 }

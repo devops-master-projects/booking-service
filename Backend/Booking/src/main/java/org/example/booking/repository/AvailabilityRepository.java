@@ -1,6 +1,7 @@
 package org.example.booking.repository;
 
 import org.example.booking.model.Availability;
+import org.example.booking.model.AvailabilityStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,6 +18,14 @@ public interface AvailabilityRepository extends JpaRepository<Availability, UUID
             UUID accommodationId,
             LocalDate endDate,
             LocalDate startDate
+    );
+
+    Set<Availability> findByAccommodationIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(
+            UUID accommodationId, AvailabilityStatus status, LocalDate endDate, LocalDate startDate);
+
+    List<Availability> findByAccommodationIdAndStatusOrderByStartDateAsc(
+            UUID accommodationId,
+            AvailabilityStatus status
     );
 
 

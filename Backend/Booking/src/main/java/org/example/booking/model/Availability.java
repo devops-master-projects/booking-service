@@ -33,4 +33,9 @@ public class Availability {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PriceType priceType = PriceType.NORMAL; // default je normalna cena
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private AvailabilityStatus status = AvailabilityStatus.AVAILABLE;
+
 }
