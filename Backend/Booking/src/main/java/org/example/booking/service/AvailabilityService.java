@@ -1,9 +1,13 @@
 package org.example.booking.service;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.example.booking.dto.AvailabilityEvent;
 import org.example.booking.dto.CalendarIntervalDto;
 import org.example.booking.model.*;
 import org.example.booking.repository.AvailabilityRepository;
 import org.example.booking.repository.ReservationRepository;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import jakarta.persistence.EntityNotFoundException;
@@ -18,6 +22,8 @@ public class AvailabilityService {
 
     private final AvailabilityRepository availabilityRepository;
     private final ReservationRepository reservationRepository;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper;
     public Availability defineAvailability(UUID accommodationId,
                                            LocalDate startDate,
                                            LocalDate endDate,
@@ -30,8 +36,10 @@ public class AvailabilityService {
         availability.setEndDate(endDate);
         availability.setPrice(price);
         availability.setPriceType(priceType != null ? priceType : PriceType.NORMAL);
+        Availability saved = availabilityRepository.save(availability);
+        sendAvailabilityEvent(saved, "AvailabilityCreated");
+        return saved;
 
-        return availabilityRepository.save(availability);
     }
 
 
@@ -48,6 +56,7 @@ public class AvailabilityService {
         availability.setEndDate(endDate);
         availability.setPrice(price);
         availability.setPriceType(priceType);
+        sendAvailabilityEvent(availability, "AvailabilityUpdated");
 
         return availabilityRepository.save(availability);
     }
@@ -127,11 +136,29 @@ public class AvailabilityService {
         if (hasReservations) {
             throw new IllegalStateException("Cannot delete availability with active reservations");
         }
-
+        sendAvailabilityEvent(availability, "AvailabilityDeleted");
         availabilityRepository.deleteById(id);
     }
 
 
+    private void sendAvailabilityEvent(Availability availability, String type) {
+        AvailabilityEvent event = AvailabilityEvent.builder()
+                .eventType(type)
+                .id(availability.getId().toString())
+                .accommodationId(availability.getAccommodationId().toString())
+                .startDate(availability.getStartDate())
+                .endDate(availability.getEndDate())
+                .price(availability.getPrice())
+                .priceType(availability.getPriceType().name())
+                .status(availability.getStatus().name())
+                .build();
 
+        try {
+            String json = objectMapper.writeValueAsString(event);
+            kafkaTemplate.send("availability-events", availability.getAccommodationId().toString(), json);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize AvailabilityEvent", e);
+        }
+    }
 
 }

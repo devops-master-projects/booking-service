@@ -1,14 +1,19 @@
 package org.example.booking.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.example.booking.dto.ReservationRequestCreateDto;
-import org.example.booking.dto.ReservationRequestResponseDto;
-import org.example.booking.dto.ReservationRequestUpdateDto;
+import org.example.booking.dto.*;
 import org.example.booking.model.*;
 import org.example.booking.repository.AvailabilityRepository;
 import org.example.booking.repository.ReservationRepository;
 import org.example.booking.repository.ReservationRequestRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -25,9 +30,15 @@ public class ReservationRequestService {
     private final ReservationRequestRepository repository;
     private final ReservationRepository reservationRepository;
     private final AvailabilityRepository availabilityRepository;
+    private final RestTemplate restTemplate;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper;
 
-    // TODO: proveriti da li se zahtev prihvata cim stigne (ES), ako
-    //       da onda treba napraviti rezervaciju
+    @Value("${accommodation.service.url}")
+    private String accommodationServiceUrl;
+
+
+    @Transactional
     public ReservationRequestResponseDto create(UUID guestId, ReservationRequestCreateDto dto) {
         ReservationRequest req = new ReservationRequest();
         req.setGuestId(guestId);
@@ -38,6 +49,16 @@ public class ReservationRequestService {
         req.setStatus(RequestStatus.PENDING);
 
         ReservationRequest saved = repository.save(req);
+
+        Boolean autoConfirm = restTemplate.getForObject(
+                accommodationServiceUrl + "/api/accommodations/" + dto.getAccommodationId() + "/auto-confirm",
+                AutoConfirmResponse.class
+        ).isAutoConfirm();
+
+        if (Boolean.TRUE.equals(autoConfirm)) {
+            return updateStatus(saved.getId(), RequestStatus.APPROVED);
+        }
+
         return toDto(saved);
     }
 
@@ -130,6 +151,8 @@ public class ReservationRequestService {
                     (Rend.isAfter(Aend) || Rend.equals(Aend))) {
                 availability.setStatus(AvailabilityStatus.OCCUPIED);
                 availabilityRepository.save(availability);
+                sendAvailabilityEvent(availability, "AvailabilityStatusChanged");
+
             }
             // 2. Rezervacija unutar availability-ja → podeli na AVAILABLE i OCCUPIED
             else if (Rstart.isAfter(Astart) && Rend.isBefore(Aend)) {
@@ -161,6 +184,11 @@ public class ReservationRequestService {
                 availabilityRepository.save(left);
                 availabilityRepository.save(occupied);
                 availabilityRepository.save(right);
+                sendAvailabilityEvent(availability, "AvailabilityDeleted");
+                sendAvailabilityEvent(left, "AvailabilityStatusChanged");
+                sendAvailabilityEvent(occupied, "AvailabilityStatusChanged");
+                sendAvailabilityEvent(right, "AvailabilityStatusChanged");
+
             }
             // 3. Preklapanje na početku
             else if ((Rstart.isBefore(Astart) || Rstart.equals(Astart)) && Rend.isBefore(Aend)) {
@@ -176,6 +204,9 @@ public class ReservationRequestService {
 
                 availabilityRepository.save(availability);
                 availabilityRepository.save(occupied);
+                sendAvailabilityEvent(availability, "AvailabilityStatusChanged");
+                sendAvailabilityEvent(occupied, "AvailabilityStatusChanged");
+
             }
             // 4. Preklapanje na kraju
             else if (Rstart.isAfter(Astart) && (Rend.isAfter(Aend) || Rend.equals(Aend))) {
@@ -191,6 +222,9 @@ public class ReservationRequestService {
 
                 availabilityRepository.save(availability);
                 availabilityRepository.save(occupied);
+                sendAvailabilityEvent(availability, "AvailabilityStatusChanged");
+                sendAvailabilityEvent(occupied, "AvailabilityStatusChanged");
+
             }
         }
     }
@@ -222,6 +256,8 @@ public class ReservationRequestService {
             if (overlaps && availability.getStatus() == AvailabilityStatus.OCCUPIED) {
                 availability.setStatus(AvailabilityStatus.AVAILABLE);
                 availabilityRepository.save(availability);
+                sendAvailabilityEvent(availability, "AvailabilityStatusChanged");
+
             }
         }
 
@@ -246,12 +282,14 @@ public class ReservationRequestService {
 
             boolean canMerge =
                     current.getEndDate().plusDays(1).equals(next.getStartDate()) && // moraju da se dodiruju
-                            current.getPrice().compareTo(next.getPrice()) == 0 &&          // ista cena
-                            current.getPriceType() == next.getPriceType();                 // isti priceType
+                            current.getPrice().compareTo(next.getPrice()) == 0 &&   // ista cena
+                            current.getPriceType() == next.getPriceType();          // isti priceType
 
             if (canMerge) {
                 current.setEndDate(next.getEndDate());
                 availabilityRepository.delete(next);
+                sendAvailabilityEvent(next, "AvailabilityDeleted");
+                sendAvailabilityEvent(current, "AvailabilityUpdated");
             } else {
                 merged.add(current);
                 current = next;
@@ -259,7 +297,11 @@ public class ReservationRequestService {
         }
 
         merged.add(current);
-        availabilityRepository.saveAll(merged);
+
+        for (Availability a : merged) {
+            availabilityRepository.save(a);
+            sendAvailabilityEvent(a, "AvailabilityUpdated");
+        }
     }
 
 
@@ -308,5 +350,26 @@ public class ReservationRequestService {
         ReservationRequest saved = repository.save(req);
         return toDto(saved);
     }
+
+    private void sendAvailabilityEvent(Availability availability, String type) {
+        AvailabilityEvent event = AvailabilityEvent.builder()
+                .eventType(type)
+                .id(availability.getId().toString())
+                .accommodationId(availability.getAccommodationId().toString())
+                .startDate(availability.getStartDate())
+                .endDate(availability.getEndDate())
+                .price(availability.getPrice())
+                .priceType(availability.getPriceType().name())
+                .status(availability.getStatus().name())
+                .build();
+
+        try {
+            String json = objectMapper.writeValueAsString(event);
+            kafkaTemplate.send("availability-events", availability.getAccommodationId().toString(), json);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize AvailabilityEvent", e);
+        }
+    }
+
 
 }
