@@ -28,6 +28,7 @@ public class ReservationRequest {
     @Column()
     private String guestLastName;
 
+
     @Column(nullable = false)
     private UUID accommodationId;
 

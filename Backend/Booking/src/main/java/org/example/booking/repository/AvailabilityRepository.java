@@ -29,4 +29,5 @@ public interface AvailabilityRepository extends JpaRepository<Availability, UUID
     );
 
 
+
 }

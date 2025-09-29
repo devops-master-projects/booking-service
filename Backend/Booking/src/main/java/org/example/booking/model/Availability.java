@@ -32,7 +32,7 @@ public class Availability {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private PriceType priceType = PriceType.NORMAL; // default je normalna cena
+    private PriceType priceType = PriceType.NORMAL;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

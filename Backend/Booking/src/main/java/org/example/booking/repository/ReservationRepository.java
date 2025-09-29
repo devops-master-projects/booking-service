@@ -31,6 +31,11 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
             ReservationStatus status
     );
 
+    Set<Reservation> findByRequest_AccommodationIdAndRequest_StartDateLessThanEqualAndRequest_EndDateGreaterThanEqual(
+            UUID accommodationId,
+            LocalDate endDate,
+            LocalDate startDate
+    );
     boolean existsByRequestAccommodationIdAndRequestStartDateLessThanEqualAndRequestEndDateGreaterThanEqualAndStatus(
             UUID accommodationId,
             LocalDate startDate,
