@@ -19,6 +19,16 @@ public class ReservationRequest {
     @Column(nullable = false)
     private UUID guestId;
 
+    @Column()
+    private String guestEmail;
+
+    @Column()
+    private String guestFirstName;
+
+    @Column()
+    private String guestLastName;
+
+
     @Column(nullable = false)
     private UUID accommodationId;
 

@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -23,6 +24,13 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
             LocalDate endDate
     );
 
+    Set<Reservation> findByRequest_AccommodationIdAndRequest_StartDateLessThanEqualAndRequest_EndDateGreaterThanEqualAndStatus(
+            UUID accommodationId,
+            LocalDate endDate,
+            LocalDate startDate,
+            ReservationStatus status
+    );
+
     Set<Reservation> findByRequest_AccommodationIdAndRequest_StartDateLessThanEqualAndRequest_EndDateGreaterThanEqual(
             UUID accommodationId,
             LocalDate endDate,
@@ -34,6 +42,10 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
             LocalDate endDate,
             ReservationStatus status
     );
+
+    Optional<Reservation> findByRequest_Id(UUID requestId);
+    int countByRequest_GuestIdAndStatus(UUID guestId, ReservationStatus status);
+
 
 
 }

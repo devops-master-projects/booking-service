@@ -5,7 +5,9 @@ import org.example.booking.dto.CalendarIntervalDto;
 import org.example.booking.model.Availability;
 import org.example.booking.service.AvailabilityService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -18,6 +20,7 @@ public class AvailabilityController {
 
     private final AvailabilityService availabilityService;
 
+    @PreAuthorize("hasRole('host')")
     @PostMapping
     public ResponseEntity<Availability> defineAvailability(@RequestBody AvailabilityRequestDto request) {
         Availability availability = availabilityService.defineAvailability(
@@ -30,7 +33,7 @@ public class AvailabilityController {
         return ResponseEntity.ok(availability);
     }
 
-
+    @PreAuthorize("hasRole('host')")
     @PutMapping("/{id}")
     public ResponseEntity<Availability> updateAvailability(@PathVariable UUID id,
                                                            @RequestBody AvailabilityRequestDto request) {
@@ -44,17 +47,25 @@ public class AvailabilityController {
         return ResponseEntity.ok(availability);
     }
 
+    @PreAuthorize("hasAnyRole('guest','host')")
     @GetMapping("/{accommodationId}/calendar")
     public ResponseEntity<Set<CalendarIntervalDto>> getCalendar(
             @PathVariable UUID accommodationId,
             @RequestParam(required = false) LocalDate startDate,
-            @RequestParam(required = false) LocalDate endDate) {
+            @RequestParam(required = false) LocalDate endDate,
+            Authentication authentication) {
 
-        Set<CalendarIntervalDto> calendar = availabilityService.getCalendar(accommodationId, startDate, endDate);
-        System.out.println(calendar.size());
+        boolean isHost = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("ROLE_host"));
+
+        Set<CalendarIntervalDto> calendar = isHost
+                ? availabilityService.getCalendarHost(accommodationId, startDate, endDate)
+                : availabilityService.getCalendar(accommodationId, startDate, endDate);
+
         return ResponseEntity.ok(calendar);
     }
 
+    @PreAuthorize("hasRole('host')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteAvailability(@PathVariable UUID id) {
         try {
