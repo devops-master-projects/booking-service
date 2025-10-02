@@ -119,6 +119,16 @@ class AvailabilityServiceIntegrationTest {
         );
 
         // Then - Verify in database
+        // When
+        availabilityService.updateAvailability(
+                original.getId(),
+                LocalDate.of(2025, 1, 2),
+                LocalDate.of(2025, 1, 8),
+                new BigDecimal("120.00"),
+                PriceType.WEEKEND
+        );
+
+        // Then - Verify in database
         Availability fromDb = availabilityRepository.findById(original.getId()).orElse(null);
         assertThat(fromDb).isNotNull();
         assertThat(fromDb.getStartDate()).isEqualTo(LocalDate.of(2025, 1, 2));
