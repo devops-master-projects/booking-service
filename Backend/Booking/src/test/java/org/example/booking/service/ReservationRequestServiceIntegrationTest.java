@@ -29,12 +29,14 @@ import java.util.List;
 import java.util.UUID;
 
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.context.ActiveProfiles;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 @SpringBootTest
+@ActiveProfiles("test")
 @TestPropertySource(properties = {
     "accommodation.service.url=http://accommodation-service"
 })
