@@ -33,10 +33,6 @@ jobs:
 
       - name: Build & run unit + integration tests
         run: ./gradlew clean build --no-daemon
-        env:
-          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5434/booking
-          SPRING_DATASOURCE_USERNAME: admin
-          SPRING_DATASOURCE_PASSWORD: password
 
       - name: Upload test reports (always)
         if: always()
