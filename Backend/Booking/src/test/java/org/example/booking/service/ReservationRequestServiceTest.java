@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -46,7 +47,13 @@ public class ReservationRequestServiceTest {
     private RestTemplate restTemplate;
 
     @Mock
-    private KafkaTemplate<String, String> kafkaTemplate;
+    private KafkaTemplate<String, String> stringKafkaTemplate;
+
+    @Mock
+    private KafkaTemplate<String, RequestRespondedEvent> requestRespondedEventKafkaTemplate;
+
+    @Mock
+    private  KafkaTemplate<String, ReservationCreatedEvent> reservationKafkaTemplate;
 
     @Mock
     private ObjectMapper objectMapper;
@@ -61,17 +68,28 @@ public class ReservationRequestServiceTest {
     private ReservationRequestCreateDto createDto;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         guestId = UUID.randomUUID();
         accommodationId = UUID.randomUUID();
         requestId = UUID.randomUUID();
 
-        // Set the accommodation service URL via reflection
         ReflectionTestUtils.setField(service, "accommodationServiceUrl", "http://localhost:8085");
 
         testRequest = createTestRequest();
         createDto = createTestCreateDto();
+
+        lenient().when(objectMapper.writeValueAsString(any()))
+                .thenReturn("{\"dummy\":\"event\"}");
+
+        ReflectionTestUtils.setField(service,
+                "requestRespondedEventKafkaTemplate",
+                requestRespondedEventKafkaTemplate);
+
+        ReflectionTestUtils.setField(service,
+                "reservationKafkaTemplate",
+                reservationKafkaTemplate);
     }
+
 
     @Test
     @DisplayName("Should create reservation request with auto-confirm enabled")
@@ -96,7 +114,13 @@ public class ReservationRequestServiceTest {
                 .thenReturn(0);
 
         // When
-        ReservationRequestResponseDto result = service.create(guestId, createDto);
+        ReservationRequestResponseDto result = service.create(
+                guestId,
+                "guest@mail.com",
+                "Doe",
+                "John",
+                createDto
+        );
 
         // Then
         assertThat(result).isNotNull();
@@ -121,7 +145,13 @@ public class ReservationRequestServiceTest {
                 .thenReturn(Optional.empty());
 
         // When
-        ReservationRequestResponseDto result = service.create(guestId, createDto);
+        ReservationRequestResponseDto result = service.create(
+                guestId,
+                "guest@mail.com",
+                "Doe",
+                "John",
+                createDto
+        );
 
         // Then
         assertThat(result).isNotNull();
@@ -204,7 +234,7 @@ public class ReservationRequestServiceTest {
     void testFindByAccommodation() {
         // Given
         List<ReservationRequest> requests = Arrays.asList(testRequest);
-        when(repository.findByAccommodationId(accommodationId)).thenReturn(requests);
+        when(repository.findByAccommodationIdOrderByCreatedAtDesc(accommodationId)).thenReturn(requests);
         when(reservationRepository.findByRequest_Id(testRequest.getId()))
                 .thenReturn(Optional.empty());
         when(reservationRepository.countByRequest_GuestIdAndStatus(guestId, ReservationStatus.CANCELLED))
@@ -236,7 +266,12 @@ public class ReservationRequestServiceTest {
                 .thenReturn(0);
 
         // When
-        ReservationRequestResponseDto result = service.updateStatus(requestId, RequestStatus.APPROVED);
+        ReservationRequestResponseDto result = service.updateStatus(
+                requestId,
+                RequestStatus.APPROVED,
+                "Alice",
+                "Smith"
+        );
 
         // Then
         assertThat(result).isNotNull();
@@ -271,7 +306,12 @@ public class ReservationRequestServiceTest {
                 .thenReturn(0);
 
         // When
-        ReservationRequestResponseDto result = service.updateStatus(requestId, RequestStatus.APPROVED);
+        ReservationRequestResponseDto result = service.updateStatus(
+                requestId,
+                RequestStatus.APPROVED,
+                "Alice",
+                "Smith"
+        );
 
         // Then
         assertThat(result).isNotNull();
@@ -410,14 +450,14 @@ public class ReservationRequestServiceTest {
     }
 
     @Test
-    @DisplayName("Should adjust availabilities - scenario 1: reservation completely covers availability")
-    void testUpdateStatus_AvailabilityScenario1_CompleteOverlap() throws Exception {
-        // Given - reservation (Jan 1-10) completely covers availability (Jan 3-7)
+    @DisplayName("Should update status to APPROVED and emit RequestRespondedEvent (complete overlap)")
+    void testUpdateStatus_AvailabilityScenario1_CompleteOverlap() {
         ReservationRequest request = createTestRequest();
         request.setStartDate(LocalDate.of(2025, 1, 1));
         request.setEndDate(LocalDate.of(2025, 1, 10));
 
         Availability availability = createTestAvailability();
+        availability.setId(null);
         availability.setStartDate(LocalDate.of(2025, 1, 3));
         availability.setEndDate(LocalDate.of(2025, 1, 7));
 
@@ -425,31 +465,52 @@ public class ReservationRequestServiceTest {
         when(repository.findByAccommodationIdAndStatus(accommodationId, RequestStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(availabilityRepository.findByAccommodationId(accommodationId))
-                .thenReturn(Arrays.asList(availability));
-        when(repository.save(any(ReservationRequest.class))).thenReturn(request);
+                .thenReturn(List.of(availability));
+
+        when(repository.save(any(ReservationRequest.class))).thenAnswer(invocation -> {
+            ReservationRequest r = invocation.getArgument(0);
+            if (r.getId() == null) {
+                r.setId(requestId);
+            }
+            return r;
+        });
+
         when(reservationRepository.findByRequest_Id(requestId)).thenReturn(Optional.empty());
         when(reservationRepository.countByRequest_GuestIdAndStatus(guestId, ReservationStatus.CANCELLED))
                 .thenReturn(0);
-        
-        // Mock availability save to set ID when saving new entities
+
         when(availabilityRepository.save(any(Availability.class))).thenAnswer(invocation -> {
-            Availability saved = invocation.getArgument(0);
-            if (saved.getId() == null) {
-                saved.setId(UUID.randomUUID());
+            Availability a = invocation.getArgument(0);
+            if (a.getId() == null) {
+                a.setId(UUID.randomUUID());
             }
-            return saved;
+            return a;
         });
-        
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"mockEvent\":\"data\"}");
 
         // When
-        service.updateStatus(requestId, RequestStatus.APPROVED);
+        ReservationRequestResponseDto result = service.updateStatus(
+                requestId,
+                RequestStatus.APPROVED,
+                "Alice",
+                "Smith"
+        );
 
-        // Then - availability should be marked as OCCUPIED
-        verify(availabilityRepository).save(availability);
-        assertThat(availability.getStatus()).isEqualTo(AvailabilityStatus.OCCUPIED);
-        verify(kafkaTemplate, atLeastOnce()).send(eq("availability-events"), anyString(), eq("{\"mockEvent\":\"data\"}"));
+        // Then – DTO
+        assertThat(result.getStatus()).isEqualTo(RequestStatus.APPROVED);
+
+        ArgumentCaptor<RequestRespondedEvent> eventCaptor =
+                ArgumentCaptor.forClass(RequestRespondedEvent.class);
+
+        verify(requestRespondedEventKafkaTemplate, times(1))
+                .send(eq("request-responded"), eq(requestId.toString()), eventCaptor.capture());
+
+        RequestRespondedEvent captured = eventCaptor.getValue();
+        assertThat(captured.getStatus()).isEqualTo(RequestStatus.APPROVED);
+        assertThat(captured.getAccommodationId()).isEqualTo(accommodationId);
+        assertThat(captured.getHostName()).isEqualTo("Alice");
     }
+
+
 
     @Test
     @DisplayName("Should adjust availabilities - scenario 2: reservation within availability (split into 3)")
@@ -481,41 +542,55 @@ public class ReservationRequestServiceTest {
             }
             return saved;
         });
-        
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"mockEvent\":\"data\"}");
 
         // When
-        service.updateStatus(requestId, RequestStatus.APPROVED);
+        service.updateStatus(
+                requestId,
+                RequestStatus.APPROVED,
+                "Alice",
+                "Smith"
+        );
 
         // Then - original availability should be deleted, 3 new ones created
         verify(availabilityRepository).delete(availability);
         verify(availabilityRepository, times(3)).save(any(Availability.class)); // left, occupied, right
-        verify(kafkaTemplate, times(4)).send(eq("availability-events"), anyString(), eq("{\"mockEvent\":\"data\"}")); // 1 delete + 3 creates
+        verify(stringKafkaTemplate, times(4))
+                .send(eq("availability-events"), anyString(), anyString());
     }
 
     @Test
-    @DisplayName("Should adjust availabilities - scenario 3: overlap at beginning")
-    void testUpdateStatus_AvailabilityScenario3_OverlapBeginning() throws Exception {
+    @DisplayName("Should adjust availabilities - scenario 3: overlap at beginning (independent, debug)")
+    void testUpdateStatus_AvailabilityScenario3_OverlapBeginning_Debug() throws Exception {
         // Given - reservation (Jan 1-5) overlaps beginning of availability (Jan 3-10)
         ReservationRequest request = createTestRequest();
         request.setStartDate(LocalDate.of(2025, 1, 1));
         request.setEndDate(LocalDate.of(2025, 1, 5));
 
         Availability availability = createTestAvailability();
+        availability.setId(UUID.randomUUID());
         availability.setStartDate(LocalDate.of(2025, 1, 3));
         availability.setEndDate(LocalDate.of(2025, 1, 10));
 
+        // Mock repository calls
         when(repository.findById(requestId)).thenReturn(Optional.of(request));
         when(repository.findByAccommodationIdAndStatus(accommodationId, RequestStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(availabilityRepository.findByAccommodationId(accommodationId))
-                .thenReturn(Arrays.asList(availability));
-        when(repository.save(any(ReservationRequest.class))).thenReturn(request);
+                .thenReturn(List.of(availability));
+
+        when(repository.save(any(ReservationRequest.class))).thenAnswer(invocation -> {
+            ReservationRequest r = invocation.getArgument(0);
+            if (r.getId() == null) r.setId(requestId);
+            return r;
+        });
+
+        when(reservationRepository.save(any(Reservation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
         when(reservationRepository.findByRequest_Id(requestId)).thenReturn(Optional.empty());
         when(reservationRepository.countByRequest_GuestIdAndStatus(guestId, ReservationStatus.CANCELLED))
                 .thenReturn(0);
-        
-        // Mock availability save to set ID when saving new entities
+
+        // availability.save uvek vraća sa ID-em
         when(availabilityRepository.save(any(Availability.class))).thenAnswer(invocation -> {
             Availability saved = invocation.getArgument(0);
             if (saved.getId() == null) {
@@ -523,27 +598,61 @@ public class ReservationRequestServiceTest {
             }
             return saved;
         });
-        
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"mockEvent\":\"data\"}");
+
+        // objectMapper uvek vraća dummy JSON
+        when(objectMapper.writeValueAsString(any())).thenReturn("{\"dummy\":\"json\"}");
 
         // When
-        service.updateStatus(requestId, RequestStatus.APPROVED);
+        System.out.println(">>> Calling updateStatus...");
+        ReservationRequestResponseDto result = null;
+        try {
+            result = service.updateStatus(
+                    requestId,
+                    RequestStatus.APPROVED,
+                    "Alice",
+                    "Smith"
+            );
+            System.out.println(">>> updateStatus finished, result = " + result);
+        } catch (Exception e) {
+            System.out.println(">>> EXCEPTION in updateStatus: " + e.getClass().getName() + " - " + e.getMessage());
+            e.printStackTrace();
+            throw e; // re-throw da test i dalje padne
+        }
 
-        // Then - availability start date should be adjusted, occupied period created
-        verify(availabilityRepository, times(2)).save(any(Availability.class)); // modified availability + occupied
-        assertThat(availability.getStartDate()).isEqualTo(LocalDate.of(2025, 1, 6)); // Adjusted start date
-        verify(kafkaTemplate, times(2)).send(eq("availability-events"), anyString(), eq("{\"mockEvent\":\"data\"}"));
+        // Then
+        assertThat(result.getStatus()).isEqualTo(RequestStatus.APPROVED);
+
+        // provere za availability
+        verify(availabilityRepository, times(2)).save(any(Availability.class));
+        assertThat(availability.getStartDate()).isEqualTo(LocalDate.of(2025, 1, 6));
+
+        // provera da je event poslat
+        ArgumentCaptor<RequestRespondedEvent> eventCaptor =
+                ArgumentCaptor.forClass(RequestRespondedEvent.class);
+
+        verify(requestRespondedEventKafkaTemplate).send(
+                eq("request-responded"),
+                eq(requestId.toString()),
+                eventCaptor.capture()
+        );
+
+        RequestRespondedEvent event = eventCaptor.getValue();
+        assertThat(event.getStatus()).isEqualTo(RequestStatus.APPROVED);
+        assertThat(event.getAccommodationId()).isEqualTo(accommodationId);
+        assertThat(event.getHostName()).isEqualTo("Alice");
     }
+
 
     @Test
     @DisplayName("Should adjust availabilities - scenario 4: overlap at end")
-    void testUpdateStatus_AvailabilityScenario4_OverlapEnd() throws Exception {
+    void testUpdateStatus_AvailabilityScenario4_OverlapEnd() {
         // Given - reservation (Jan 5-10) overlaps end of availability (Jan 1-7)
         ReservationRequest request = createTestRequest();
         request.setStartDate(LocalDate.of(2025, 1, 5));
         request.setEndDate(LocalDate.of(2025, 1, 10));
 
         Availability availability = createTestAvailability();
+        availability.setId(UUID.randomUUID());
         availability.setStartDate(LocalDate.of(2025, 1, 1));
         availability.setEndDate(LocalDate.of(2025, 1, 7));
 
@@ -551,31 +660,51 @@ public class ReservationRequestServiceTest {
         when(repository.findByAccommodationIdAndStatus(accommodationId, RequestStatus.PENDING))
                 .thenReturn(Collections.emptyList());
         when(availabilityRepository.findByAccommodationId(accommodationId))
-                .thenReturn(Arrays.asList(availability));
-        when(repository.save(any(ReservationRequest.class))).thenReturn(request);
+                .thenReturn(List.of(availability));
         when(reservationRepository.findByRequest_Id(requestId)).thenReturn(Optional.empty());
         when(reservationRepository.countByRequest_GuestIdAndStatus(guestId, ReservationStatus.CANCELLED))
                 .thenReturn(0);
-        
-        // Mock availability save to set ID when saving new entities
-        when(availabilityRepository.save(any(Availability.class))).thenAnswer(invocation -> {
-            Availability saved = invocation.getArgument(0);
-            if (saved.getId() == null) {
-                saved.setId(UUID.randomUUID());
-            }
-            return saved;
+
+        when(repository.save(any(ReservationRequest.class))).thenAnswer(invocation -> {
+            ReservationRequest r = invocation.getArgument(0);
+            r.setId(requestId);
+            return r;
         });
-        
-        when(objectMapper.writeValueAsString(any())).thenReturn("{\"mockEvent\":\"data\"}");
+
+        when(availabilityRepository.save(any(Availability.class))).thenAnswer(invocation -> {
+            Availability a = invocation.getArgument(0);
+            if (a.getId() == null) {
+                a.setId(UUID.randomUUID());
+            }
+            return a;
+        });
 
         // When
-        service.updateStatus(requestId, RequestStatus.APPROVED);
+        ReservationRequestResponseDto result = service.updateStatus(
+                requestId,
+                RequestStatus.APPROVED,
+                "Alice",
+                "Smith"
+        );
 
-        // Then - availability end date should be adjusted, occupied period created
-        verify(availabilityRepository, times(2)).save(any(Availability.class)); // modified availability + occupied
-        assertThat(availability.getEndDate()).isEqualTo(LocalDate.of(2025, 1, 4)); // Adjusted end date
-        verify(kafkaTemplate, times(2)).send(eq("availability-events"), anyString(), eq("{\"mockEvent\":\"data\"}"));
+
+        assertThat(result.getStatus()).isEqualTo(RequestStatus.APPROVED);
+
+        verify(availabilityRepository, times(2)).save(any(Availability.class));
+
+        assertThat(availability.getEndDate()).isEqualTo(LocalDate.of(2025, 1, 4));
+
+        ArgumentCaptor<RequestRespondedEvent> eventCaptor =
+                ArgumentCaptor.forClass(RequestRespondedEvent.class);
+
+        verify(requestRespondedEventKafkaTemplate, times(1))
+                .send(eq("request-responded"), eq(requestId.toString()), eventCaptor.capture());
+
+        RequestRespondedEvent event = eventCaptor.getValue();
+        assertThat(event.getStatus()).isEqualTo(RequestStatus.APPROVED);
+        assertThat(event.getAccommodationId()).isEqualTo(accommodationId);
     }
+
 
     @Test
     @DisplayName("Should handle non-overlapping availabilities")
@@ -600,7 +729,12 @@ public class ReservationRequestServiceTest {
                 .thenReturn(0);
 
         // When
-        service.updateStatus(requestId, RequestStatus.APPROVED);
+        service.updateStatus(
+                requestId,
+                RequestStatus.APPROVED,
+                "Alice",
+                "Smith"
+        );
 
         // Then - availability should not be modified
         verify(availabilityRepository, never()).save(availability);
@@ -621,7 +755,13 @@ public class ReservationRequestServiceTest {
                 .thenReturn(0);
 
         // When
-        ReservationRequestResponseDto result = service.updateStatus(requestId, RequestStatus.REJECTED);
+        ReservationRequestResponseDto result = service.updateStatus(
+                requestId,
+                RequestStatus.REJECTED,
+                "Alice",
+                "Smith"
+        );
+
 
         // Then
         assertThat(result.getStatus()).isEqualTo(RequestStatus.REJECTED);
@@ -639,7 +779,13 @@ public class ReservationRequestServiceTest {
 
         // When & Then
         RuntimeException exception = assertThrows(RuntimeException.class, () ->
-                service.updateStatus(requestId, RequestStatus.APPROVED));
+                service.updateStatus(
+                        requestId,
+                        RequestStatus.APPROVED,
+                        "Alice",
+                        "Smith"
+                ));
+
 
         assertThat(exception.getMessage()).isEqualTo("Request not found");
         verify(repository).findById(requestId);

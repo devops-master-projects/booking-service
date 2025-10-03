@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -43,6 +45,7 @@ class ReservationRequestControllerTest {
     @WithMockUser(roles = "guest")
     void shouldCreateReservationRequest() throws Exception {
         UUID guestId = UUID.randomUUID();
+
         ReservationRequestCreateDto dto = new ReservationRequestCreateDto(
                 UUID.randomUUID(),
                 LocalDate.now(),
@@ -51,15 +54,31 @@ class ReservationRequestControllerTest {
         );
 
         ReservationRequestResponseDto response = new ReservationRequestResponseDto();
-        Mockito.when(service.create(eq(guestId), any())).thenReturn(response);
+
+        when(service.create(eq(guestId), anyString(), anyString(), anyString(), any()))
+                .thenReturn(response);
 
         mockMvc.perform(post("/api/reservation-requests")
                         .with(csrf())
-                        .with(jwt().jwt(jwt -> jwt.claim("sub", guestId.toString())))
+                        .with(jwt().jwt(jwt -> jwt
+                                .claim("sub", guestId.toString())
+                                .claim("email", "guest@mail.com")
+                                .claim("given_name", "John")
+                                .claim("family_name", "Doe")
+                        ))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(dto)))
                 .andExpect(status().isOk());
+
+        verify(service).create(
+                eq(guestId),
+                eq("guest@mail.com"),
+                eq("Doe"),
+                eq("John"),
+                any(ReservationRequestCreateDto.class)
+        );
     }
+
 
     @Test
     @WithMockUser(roles = "guest")
@@ -71,7 +90,7 @@ class ReservationRequestControllerTest {
                 3
         );
 
-        Mockito.when(service.update(eq(id), any())).thenReturn(new ReservationRequestResponseDto());
+        when(service.update(eq(id), any())).thenReturn(new ReservationRequestResponseDto());
 
         mockMvc.perform(put("/api/reservation-requests/{id}", id)
                         .with(csrf())
@@ -86,7 +105,7 @@ class ReservationRequestControllerTest {
         UUID guestId = UUID.randomUUID();
         UUID accommodationId = UUID.randomUUID();
 
-        Mockito.when(service.findByGuest(eq(guestId), eq(accommodationId)))
+        when(service.findByGuest(eq(guestId), eq(accommodationId)))
                 .thenReturn(List.of(new ReservationRequestResponseDto()));
 
         mockMvc.perform(get("/api/reservation-requests/guest/{accommodationId}", accommodationId)
@@ -127,7 +146,7 @@ class ReservationRequestControllerTest {
     @WithMockUser(roles = "host")
     void shouldGetByAccommodation() throws Exception {
         UUID accommodationId = UUID.randomUUID();
-        Mockito.when(service.findByAccommodation(accommodationId))
+        when(service.findByAccommodation(accommodationId))
                 .thenReturn(List.of(new ReservationRequestResponseDto()));
 
         mockMvc.perform(get("/api/reservation-requests/accommodation/{accommodationId}", accommodationId))
@@ -140,14 +159,28 @@ class ReservationRequestControllerTest {
         UUID id = UUID.randomUUID();
         RequestStatus status = RequestStatus.APPROVED;
 
-        Mockito.when(service.updateStatus(eq(id), eq(status)))
-                .thenReturn(new ReservationRequestResponseDto());
+        ReservationRequestResponseDto response = new ReservationRequestResponseDto();
+
+        when(service.updateStatus(eq(id), eq(status), anyString(), anyString()))
+                .thenReturn(response);
 
         mockMvc.perform(patch("/api/reservation-requests/{id}/status", id)
                         .param("status", status.name())
-                        .with(csrf()))
+                        .with(csrf())
+                        .with(jwt().jwt(jwt -> jwt
+                                .claim("given_name", "Alice")
+                                .claim("family_name", "Smith")
+                        )))
                 .andExpect(status().isOk());
+
+        verify(service).updateStatus(
+                eq(id),
+                eq(status),
+                eq("Alice"),
+                eq("Smith")
+        );
     }
+
 
     @Test
     @WithMockUser(roles = "host")
@@ -157,7 +190,7 @@ class ReservationRequestControllerTest {
         mockMvc.perform(delete("/api/reservation-requests/{id}", id).with(csrf()))
                 .andExpect(status().isNoContent());
 
-        Mockito.verify(service).delete(id);
+        verify(service).delete(id);
     }
 
     // endregion
