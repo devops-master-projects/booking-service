@@ -31,15 +31,20 @@ public class ReservationRequestService {
     private final ReservationRepository reservationRepository;
     private final AvailabilityRepository availabilityRepository;
     private final RestTemplate restTemplate;
-    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final KafkaTemplate<String, String> stringKafkaTemplate;
+    private final KafkaTemplate<String, ReservationCreatedEvent> reservationKafkaTemplate;
+    private final KafkaTemplate<String, RequestRespondedEvent> requestRespondedEventKafkaTemplate;
     private final ObjectMapper objectMapper;
-
     @Value("${accommodation.service.url}")
     private String accommodationServiceUrl;
 
 
     @Transactional
-    public ReservationRequestResponseDto create(UUID guestId, ReservationRequestCreateDto dto) {
+    public ReservationRequestResponseDto create(UUID guestId,
+                                                String guestEmail,
+                                                String guestLastName,
+                                                String guestFirstName,
+                                                ReservationRequestCreateDto dto) {
         ReservationRequest req = new ReservationRequest();
         req.setGuestId(guestId);
         req.setAccommodationId(dto.getAccommodationId());
@@ -47,8 +52,30 @@ public class ReservationRequestService {
         req.setEndDate(dto.getEndDate());
         req.setGuestCount(dto.getGuestCount());
         req.setStatus(RequestStatus.PENDING);
+        req.setGuestEmail(guestEmail);
+        req.setGuestFirstName(guestFirstName);
+        req.setGuestLastName(guestLastName);
 
         ReservationRequest saved = repository.save(req);
+
+        ReservationCreatedEvent event = new ReservationCreatedEvent(
+                saved.getId(),
+                saved.getAccommodationId(),
+                saved.getGuestId(),
+                saved.getGuestFirstName(),
+                saved.getGuestLastName(),
+                saved.getGuestEmail(),
+                saved.getStartDate(),
+                saved.getEndDate(),
+                LocalDateTime.now()
+
+        );
+
+        reservationKafkaTemplate.send(
+                "reservation-created",
+                saved.getAccommodationId().toString(),
+                event
+        );
 
         Boolean autoConfirm = restTemplate.getForObject(
                 accommodationServiceUrl + "/api/accommodations/" + dto.getAccommodationId() + "/auto-confirm",
@@ -56,7 +83,7 @@ public class ReservationRequestService {
         ).isAutoConfirm();
 
         if (Boolean.TRUE.equals(autoConfirm)) {
-            return updateStatus(saved.getId(), RequestStatus.APPROVED);
+            return updateStatus(saved.getId(), RequestStatus.APPROVED, "", "");
         }
 
         return toDto(saved);
@@ -91,15 +118,25 @@ public class ReservationRequestService {
 
 
     public List<ReservationRequestResponseDto> findByAccommodation(UUID accommodationId) {
-        return repository.findByAccommodationId(accommodationId).stream()
+        return repository.findByAccommodationIdOrderByCreatedAtDesc(accommodationId).stream()
                 .map(this::toDto)
-                .collect(Collectors.toList());
+                .toList();
     }
 
-    public ReservationRequestResponseDto updateStatus(UUID id, RequestStatus status) {
+
+    // TODO: Kafka
+    public ReservationRequestResponseDto updateStatus(UUID id, RequestStatus status, String hostName, String hostLastName) {
         ReservationRequest req = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Request not found"));
 
+        RequestRespondedEvent event = new RequestRespondedEvent();
+        event.setReservationRequestId(req.getId());
+        event.setStatus(status);
+        event.setAccommodationId(req.getAccommodationId());
+        event.setRespondedAt(LocalDateTime.now());
+        event.setGuestId(req.getGuestId());
+        event.setHostName(hostName);
+        event.setHostLastName(hostLastName);
         req.setStatus(status);
 
         if (status.equals(RequestStatus.APPROVED)) {
@@ -124,9 +161,17 @@ public class ReservationRequestService {
             reservation.setStatus(ReservationStatus.CONFIRMED);
             reservationRepository.save(reservation);
 
+
+
             // 3. Mark availabilities for this reservation as OCCUPIED
             adjustAvailabilitiesForReservation(req);
         }
+
+        requestRespondedEventKafkaTemplate.send(
+                "request-responded",
+                event.getReservationRequestId().toString(),
+                event
+        );
 
         return toDto(repository.save(req));
     }
@@ -245,6 +290,27 @@ public class ReservationRequestService {
         // 2. Obeleži rezervaciju kao CANCELLED
         reservation.setStatus(ReservationStatus.CANCELLED);
         reservationRepository.save(reservation);
+
+        reservation.setStatus(ReservationStatus.CANCELLED);
+        ReservationCreatedEvent event = new ReservationCreatedEvent(
+                request.getId(),
+                request.getAccommodationId(),
+                request.getGuestId(),
+                request.getGuestFirstName(),
+                request.getGuestLastName(),
+                request.getGuestEmail(),
+                request.getStartDate(),
+                request.getEndDate(),
+                LocalDateTime.now()
+
+        );
+
+        reservationKafkaTemplate.send(
+                "reservation-cancelled",
+                request.getAccommodationId().toString(),
+                event
+        );
+
 
         // 3. Vrati availabilities na AVAILABLE
         List<Availability> availabilities = availabilityRepository.findByAccommodationId(request.getAccommodationId());
@@ -365,7 +431,7 @@ public class ReservationRequestService {
 
         try {
             String json = objectMapper.writeValueAsString(event);
-            kafkaTemplate.send("availability-events", availability.getAccommodationId().toString(), json);
+            stringKafkaTemplate.send("availability-events", availability.getAccommodationId().toString(), json);
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize AvailabilityEvent", e);
         }
