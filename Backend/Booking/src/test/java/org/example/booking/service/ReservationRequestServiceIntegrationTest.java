@@ -16,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -42,6 +43,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
     "accommodation.service.url=http://accommodation-service"
 })
 @Transactional
+@EmbeddedKafka(partitions = 1, topics = {"request-responded", "reservation-created", "availability-events"})
 class ReservationRequestServiceIntegrationTest {
 
     @Autowired
