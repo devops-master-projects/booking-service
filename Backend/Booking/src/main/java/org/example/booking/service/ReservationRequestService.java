@@ -9,7 +9,6 @@ import org.example.booking.model.*;
 import org.example.booking.repository.AvailabilityRepository;
 import org.example.booking.repository.ReservationRepository;
 import org.example.booking.repository.ReservationRequestRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
