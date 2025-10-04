@@ -15,6 +15,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
@@ -31,6 +32,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@ActiveProfiles("test")
 @DisplayName("ReservationRequestService Tests")
 public class ReservationRequestServiceTest {
 
@@ -88,6 +90,11 @@ public class ReservationRequestServiceTest {
         ReflectionTestUtils.setField(service,
                 "reservationKafkaTemplate",
                 reservationKafkaTemplate);
+
+        ReflectionTestUtils.setField(service,
+                "stringKafkaTemplate",
+                stringKafkaTemplate);
+
     }
 
 

@@ -5,6 +5,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Profile;
 import org.springframework.kafka.annotation.EnableKafka;
 
 @SpringBootApplication
@@ -19,6 +20,7 @@ public class BookingApplication {
      * as COMPLETED.
      */
     @Bean
+    @Profile("!test")
     CommandLineRunner runAtStartup(ReservationRequestService service) {
         return args -> {
             service.markCompletedReservations();

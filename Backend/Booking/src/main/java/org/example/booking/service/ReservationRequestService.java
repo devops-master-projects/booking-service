@@ -145,7 +145,20 @@
                             || other.getStartDate().isAfter(req.getEndDate()));
                     if (overlaps && !other.getId().equals(req.getId())) {
                         other.setStatus(RequestStatus.REJECTED);
-                        repository.save(other);
+                        ReservationRequest s =  repository.save(other);
+                        RequestRespondedEvent event = new RequestRespondedEvent();
+                        event.setReservationRequestId(s.getId());
+                        event.setStatus(s.getStatus());
+                        event.setAccommodationId(s.getAccommodationId());
+                        event.setRespondedAt(LocalDateTime.now());
+                        event.setGuestId(s.getGuestId());
+                        event.setHostName(hostName);
+                        event.setHostLastName(hostLastName);
+                        requestRespondedEventKafkaTemplate.send(
+                                "request-responded",
+                                s.getId().toString(),
+                                event
+                        );
                     }
                 }
 
@@ -183,7 +196,6 @@
 
         private void adjustAvailabilitiesForReservation(ReservationRequest req) {
             List<Availability> availabilities = availabilityRepository.findByAccommodationId(req.getAccommodationId());
-
             for (Availability availability : availabilities) {
                 boolean overlaps = !(availability.getEndDate().isBefore(req.getStartDate())
                         || availability.getStartDate().isAfter(req.getEndDate()));
