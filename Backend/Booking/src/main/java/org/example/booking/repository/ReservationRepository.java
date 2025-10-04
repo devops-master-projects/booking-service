@@ -5,6 +5,7 @@ import org.example.booking.model.ReservationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -29,6 +30,10 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID> 
             UUID accommodationId,
             ReservationStatus status,
             LocalDate date
+    );
+
+    List<Reservation> findAllByStatusAndRequest_EndDateBefore(
+            ReservationStatus status, LocalDate request_endDate
     );
 
     Set<Reservation> findByRequest_AccommodationIdAndRequest_StartDateLessThanEqualAndRequest_EndDateGreaterThanEqualAndStatus(

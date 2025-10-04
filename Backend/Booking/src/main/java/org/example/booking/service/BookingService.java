@@ -16,7 +16,7 @@ public class BookingService {
 
     /**
      * Checks if the guest has actually stayed in the given accommodation at least once in the past.
-     * The reservation must have been confirmed and already finished (endDate before today).
+     * The reservation must have been completed and already finished (endDate before today).
      *
      * @param guestId ID of the guest
      * @param accommodationId ID of the accommodation
@@ -26,7 +26,7 @@ public class BookingService {
         return reservationRepository.existsByRequest_GuestIdAndRequest_AccommodationIdAndStatusAndRequest_EndDateBefore(
                 guestId,
                 accommodationId,
-                ReservationStatus.CONFIRMED,
+                ReservationStatus.COMPLETED,
                 LocalDate.now()
         );
     }
