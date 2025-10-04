@@ -441,5 +441,23 @@
             }
         }
 
+        /**
+         * Marks all reservations that ended before today and are still CONFIRMED
+         * as COMPLETED.
+         */
+        @Transactional
+        public void markCompletedReservations() {
+            LocalDate today = LocalDate.now();
+
+            List<Reservation> toComplete = reservationRepository
+                    .findAllByStatusAndRequest_EndDateBefore(ReservationStatus.CONFIRMED, today);
+
+            toComplete.forEach(r -> r.setStatus(ReservationStatus.COMPLETED));
+
+            if (!toComplete.isEmpty()) {
+                reservationRepository.saveAll(toComplete);
+            }
+        }
+
 
     }
