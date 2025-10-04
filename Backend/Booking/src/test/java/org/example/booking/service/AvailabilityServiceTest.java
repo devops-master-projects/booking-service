@@ -18,6 +18,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.test.context.ActiveProfiles;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
@@ -29,6 +31,8 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AvailabilityService Tests")
+@ActiveProfiles("test")
+
 class AvailabilityServiceTest {
 
     @Mock
