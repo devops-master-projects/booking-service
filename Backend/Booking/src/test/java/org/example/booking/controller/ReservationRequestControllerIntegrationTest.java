@@ -54,30 +54,45 @@ class ReservationRequestControllerIntegrationTest {
         return dto;
     }
 
-    // region guest endpoints
     @Test
-    @DisplayName("Guest: create reservation request succeeds and passes guestId from JWT 'sub'")
+    @DisplayName("Guest: create reservation request succeeds and passes claims from JWT")
     void guestCreateSuccess() throws Exception {
         UUID guestId = UUID.randomUUID();
+
         ReservationRequestCreateDto createDto = new ReservationRequestCreateDto(
                 UUID.randomUUID(),
                 LocalDate.now().plusDays(5),
                 LocalDate.now().plusDays(7),
                 2
         );
+
         ReservationRequestResponseDto resp = sampleResponse();
-        when(service.create(eq(guestId), any())).thenReturn(resp);
+
+        when(service.create(eq(guestId), anyString(), anyString(), anyString(), any()))
+                .thenReturn(resp);
 
         mockMvc.perform(post("/api/reservation-requests")
                         .with(csrf())
-                        .with(jwt().jwt(j -> j.subject(guestId.toString()).claim("sub", guestId.toString()))
-                                .authorities(new SimpleGrantedAuthority("ROLE_guest")))
+                        .with(jwt().jwt(j -> j
+                                .subject(guestId.toString())
+                                .claim("sub", guestId.toString())
+                                .claim("email", "guest@mail.com")
+                                .claim("given_name", "John")
+                                .claim("family_name", "Doe")
+                        ).authorities(new SimpleGrantedAuthority("ROLE_guest")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createDto)))
                 .andExpect(status().isOk());
 
-        verify(service).create(eq(guestId), any());
+        verify(service).create(
+                eq(guestId),
+                eq("guest@mail.com"),
+                eq("Doe"),
+                eq("John"),
+                any(ReservationRequestCreateDto.class)
+        );
     }
+
 
     @Test
     @DisplayName("Guest: get by guest returns OK and invokes service")
@@ -159,20 +174,33 @@ class ReservationRequestControllerIntegrationTest {
     }
 
     @Test
-    @DisplayName("Host: update status")
+    @DisplayName("Host: update status succeeds and passes host details from JWT")
     void hostUpdateStatus() throws Exception {
         UUID id = UUID.randomUUID();
         RequestStatus newStatus = RequestStatus.APPROVED;
-        when(service.updateStatus(eq(id), eq(newStatus))).thenReturn(sampleResponse());
+
+        ReservationRequestResponseDto resp = sampleResponse();
+
+        when(service.updateStatus(eq(id), eq(newStatus), anyString(), anyString()))
+                .thenReturn(resp);
 
         mockMvc.perform(patch("/api/reservation-requests/{id}/status", id)
                         .param("status", newStatus.name())
                         .with(csrf())
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_host"))))
+                        .with(jwt().jwt(j -> j
+                                .claim("given_name", "Alice")
+                                .claim("family_name", "Smith")
+                        ).authorities(new SimpleGrantedAuthority("ROLE_host"))))
                 .andExpect(status().isOk());
 
-        verify(service).updateStatus(id, newStatus);
+        verify(service).updateStatus(
+                eq(id),
+                eq(newStatus),
+                eq("Alice"),
+                eq("Smith")
+        );
     }
+
 
     @Test
     @DisplayName("Host: delete request")
@@ -182,7 +210,7 @@ class ReservationRequestControllerIntegrationTest {
 
         mockMvc.perform(delete("/api/reservation-requests/{id}", id)
                         .with(csrf())
-                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_host"))))
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_guest"))))
                 .andExpect(status().isNoContent());
 
         verify(service).delete(id);

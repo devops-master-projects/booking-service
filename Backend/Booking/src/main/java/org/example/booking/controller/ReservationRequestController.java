@@ -28,9 +28,12 @@ public class ReservationRequestController {
             @RequestBody ReservationRequestCreateDto dto
     ) {
         UUID guestId = UUID.fromString(jwt.getClaim("sub"));
-        System.out.println("GUESTID: " + guestId);
-        return ResponseEntity.ok(service.create(guestId, dto));
-    }
+        String guestEmail = jwt.getClaim("email");
+        String guestFirstName = jwt.getClaim("given_name");
+        String guestLastName = jwt.getClaim("family_name");
+        return ResponseEntity.ok(
+                service.create(guestId, guestEmail, guestLastName, guestFirstName, dto)
+        );    }
 
     @PreAuthorize("hasRole('guest')")
     @PutMapping("/{id}")
@@ -65,12 +68,17 @@ public class ReservationRequestController {
     @PatchMapping("/{id}/status")
     public ResponseEntity<ReservationRequestResponseDto> updateStatus(
             @PathVariable UUID id,
-            @RequestParam RequestStatus status
+            @RequestParam RequestStatus status,
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        return ResponseEntity.ok(service.updateStatus(id, status));
+        String firstName = jwt.getClaim("given_name");
+        String lastName  = jwt.getClaim("family_name");
+
+        return ResponseEntity.ok(service.updateStatus(id, status, firstName, lastName));
     }
 
-    @PreAuthorize("hasRole('host')")
+
+    @PreAuthorize("hasRole('guest')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         service.delete(id);

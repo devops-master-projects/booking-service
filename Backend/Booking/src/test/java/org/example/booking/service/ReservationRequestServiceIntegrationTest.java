@@ -1,5 +1,6 @@
 package org.example.booking.service;
 
+import org.example.booking.dto.ReservationCreatedEvent;
 import org.example.booking.dto.ReservationRequestCreateDto;
 import org.example.booking.dto.ReservationRequestResponseDto;
 import org.example.booking.dto.ReservationRequestUpdateDto;
@@ -15,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -41,6 +43,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
     "accommodation.service.url=http://accommodation-service"
 })
 @Transactional
+@EmbeddedKafka(partitions = 1, topics = {"request-responded", "reservation-created", "availability-events"})
 class ReservationRequestServiceIntegrationTest {
 
     @Autowired
@@ -61,6 +64,9 @@ class ReservationRequestServiceIntegrationTest {
 
     @MockitoBean
     private KafkaTemplate<String, String> kafkaTemplate; // mocked kafka template
+    @MockitoBean
+    private KafkaTemplate<String, ReservationCreatedEvent> reservationKafkaTemplate;
+
 
     @TestConfiguration
     static class RestTemplateConfig {
@@ -97,6 +103,7 @@ class ReservationRequestServiceIntegrationTest {
     @DisplayName("create(): returns PENDING when autoConfirm=false")
     void testCreatePending() {
         stubAutoConfirm(false);
+
         ReservationRequestCreateDto dto = new ReservationRequestCreateDto(
                 accommodationId,
                 LocalDate.now().plusDays(5),
@@ -104,12 +111,19 @@ class ReservationRequestServiceIntegrationTest {
                 2
         );
 
-        ReservationRequestResponseDto response = service.create(guestId, dto);
+        ReservationRequestResponseDto response = service.create(
+                guestId,
+                "guest@mail.com",
+                "Doe",
+                "John",
+                dto
+        );
 
         assertThat(response.getStatus()).isEqualTo(RequestStatus.PENDING);
         assertThat(requestRepository.findById(response.getId())).isPresent();
         server.verify();
     }
+
 
     @Test
     @DisplayName("create(): autoConfirm=true triggers APPROVED status and reservation creation")
@@ -122,8 +136,13 @@ class ReservationRequestServiceIntegrationTest {
                 2
         );
 
-        ReservationRequestResponseDto response = service.create(guestId, dto);
-
+        ReservationRequestResponseDto response = service.create(
+                guestId,
+                "guest@mail.com",
+                "Doe",
+                "John",
+                dto
+        );
         assertThat(response.getStatus()).isEqualTo(RequestStatus.APPROVED);
         // reservation should exist
         assertThat(reservationRepository.findByRequest_Id(response.getId())).isPresent();
@@ -165,8 +184,12 @@ class ReservationRequestServiceIntegrationTest {
         availability.setStatus(AvailabilityStatus.AVAILABLE);
         availabilityRepository.save(availability);
 
-    ReservationRequestResponseDto approved = service.updateStatus(r1.getId(), RequestStatus.APPROVED);
-
+        ReservationRequestResponseDto approved = service.updateStatus(
+                r1.getId(),
+                RequestStatus.APPROVED,
+                "Alice",
+                "Smith"
+        );
         assertThat(approved.getStatus()).isEqualTo(RequestStatus.APPROVED);
         assertThat(reservationRepository.findByRequest_Id(r1.getId())).isPresent();
         // r2 should be rejected
