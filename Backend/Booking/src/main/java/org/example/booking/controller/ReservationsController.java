@@ -1,5 +1,6 @@
 package org.example.booking.controller;
 
+import com.nimbusds.oauth2.sdk.Response;
 import lombok.RequiredArgsConstructor;
 import org.example.booking.service.BookingService;
 import org.springframework.http.ResponseEntity;
@@ -28,5 +29,33 @@ public class ReservationsController {
         boolean eligible = service.hasGuestCompletedStay(guestId, accommodationId);
         return ResponseEntity.ok(eligible);
     }
+
+    @PreAuthorize("hasRole('guest')")
+    @GetMapping("/host/{hostId}/can-rate")
+    public ResponseEntity<Boolean> canGuestRateHost(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID hostId) {
+        UUID guestId = UUID.fromString(jwt.getClaim("sub"));
+        boolean eligible = service.canGuestRateHost(hostId, guestId);
+        return ResponseEntity.ok(eligible);
+    }
+
+    @PreAuthorize("hasRole('guest')")
+    @GetMapping("/guest/can-delete-account")
+    public ResponseEntity<Boolean> canGuestDeleteAccount(@AuthenticationPrincipal Jwt jwt) {
+        UUID guestId = UUID.fromString(jwt.getClaim("sub"));
+        boolean canDelete = service.canGuestDeleteAccount(guestId);
+        return ResponseEntity.ok(canDelete);
+    }
+
+    @PreAuthorize("hasRole('host')")
+    @GetMapping("/host/can-delete-account")
+    public ResponseEntity<Boolean> canHostDeleteAccount(@AuthenticationPrincipal Jwt jwt) {
+        UUID hostId = UUID.fromString(jwt.getClaim("sub"));
+        boolean eligible = service.canHostDeleteAccount(hostId);
+        return ResponseEntity.ok(eligible);
+    }
+
+
 
 }
