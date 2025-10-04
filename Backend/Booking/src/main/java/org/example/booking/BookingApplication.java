@@ -14,7 +14,10 @@ public class BookingApplication {
     public static void main(String[] args) {
         SpringApplication.run(BookingApplication.class, args);
     }
-
+    /**
+     * Marks all reservations that ended before today and are still CONFIRMED
+     * as COMPLETED.
+     */
     @Bean
     CommandLineRunner runAtStartup(ReservationRequestService service) {
         return args -> {
