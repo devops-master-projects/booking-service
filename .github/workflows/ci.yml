@@ -83,6 +83,12 @@ jobs:
           BR="${{ steps.v.outputs.branch }}"
           PV="${{ steps.v.outputs.pkgver }}"
           SH="${{ steps.v.outputs.sha }}"
+          
+          # Fix: Use default version if empty
+          if [ -z "$PV" ] || [ "$PV" = "unspecified" ]; then
+            PV="0.0.1-SNAPSHOT"
+          fi
+          
           if [ "$BR" = "master" ] || [ "$BR" = "main" ]; then
             TAGS="latest,${PV},${PV}-${SH},sha-${SH}"
           elif [ "$BR" = "develop" ]; then
