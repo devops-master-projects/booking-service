@@ -12,7 +12,8 @@ WORKDIR /app
 
 RUN addgroup -S spring && adduser -S spring -G spring
 
-COPY --from=build /app/build/libs/*.jar app.jar
+# Kopirajte samo executable JAR (bez -plain.jar)
+COPY --from=build /app/build/libs/*-SNAPSHOT.jar app.jar
 
 RUN chown -R spring:spring /app
 
