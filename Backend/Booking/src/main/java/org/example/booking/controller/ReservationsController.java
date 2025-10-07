@@ -52,9 +52,10 @@ public class ReservationsController {
     @GetMapping("/host/can-delete-account")
     public ResponseEntity<Boolean> canHostDeleteAccount(@AuthenticationPrincipal Jwt jwt) {
         UUID hostId = UUID.fromString(jwt.getClaim("sub"));
-        boolean eligible = service.canHostDeleteAccount(hostId);
+        boolean eligible = service.canHostDeleteAccount(hostId, jwt.getTokenValue());
         return ResponseEntity.ok(eligible);
     }
+
 
 
 
