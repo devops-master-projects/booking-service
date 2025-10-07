@@ -50,7 +50,11 @@ dependencies {
     testImplementation 'org.springframework.kafka:spring-kafka-test'
     testImplementation 'org.testcontainers:kafka:1.21.3'
     testImplementation 'com.h2database:h2'
-
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'com.github.loki4j:loki-logback-appender:1.5.1'
 
 }
 
