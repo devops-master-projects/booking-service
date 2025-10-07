@@ -4,6 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.example.booking.model.ReservationStatus;
 import org.example.booking.repository.ReservationRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -75,12 +78,21 @@ public class BookingService {
         return !hasActive;
     }
 
-    public boolean canHostDeleteAccount(UUID hostId) {
-        UUID[] accommodationIds = restTemplate.getForObject(
-                accommodationServiceUrl + "/host/" + hostId,
+    public boolean canHostDeleteAccount(UUID hostId, String jwtToken) {
+        String url = accommodationServiceUrl + "/api/accommodations/host/" + hostId;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(jwtToken);
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<UUID[]> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                entity,
                 UUID[].class
         );
 
+        UUID[] accommodationIds = response.getBody();
         if (accommodationIds.length == 0) {
             return true;
         }

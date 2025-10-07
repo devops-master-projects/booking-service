@@ -1,5 +1,6 @@
 package org.example.booking.dto;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
 
 @Data
