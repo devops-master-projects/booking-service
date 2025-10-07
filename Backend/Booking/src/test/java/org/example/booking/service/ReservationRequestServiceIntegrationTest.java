@@ -1,6 +1,5 @@
 package org.example.booking.service;
 
-import org.example.booking.dto.ReservationCreatedEvent;
 import org.example.booking.dto.ReservationRequestCreateDto;
 import org.example.booking.dto.ReservationRequestResponseDto;
 import org.example.booking.dto.ReservationRequestUpdateDto;
@@ -12,17 +11,22 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.kafka.test.context.EmbeddedKafka;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.http.MediaType;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import org.testcontainers.containers.KafkaContainer;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -30,21 +34,38 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.test.context.ActiveProfiles;
-
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@TestPropertySource(properties = {
-    "accommodation.service.url=http://accommodation-service"
-})
 @Transactional
-@EmbeddedKafka(partitions = 1, topics = {"request-responded", "reservation-created", "availability-events"})
+@Testcontainers
+@SuppressWarnings({"resource","deprecation"})
 class ReservationRequestServiceIntegrationTest {
+
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
+            .withDatabaseName("booking_test")
+            .withUsername("test")
+            .withPassword("test");
+
+    @Container
+    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.1"))
+            .withReuse(false);
+
+    @DynamicPropertySource
+    static void overrideProps(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.username", postgres::getUsername);
+        registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
+        registry.add("spring.jpa.properties.hibernate.dialect", () -> "org.hibernate.dialect.PostgreSQLDialect");
+        registry.add("spring.kafka.bootstrap-servers", kafka::getBootstrapServers);
+        registry.add("accommodation.service.url", () -> "http://accommodation-service");
+    }
 
     @Autowired
     private ReservationRequestService service;
@@ -59,17 +80,10 @@ class ReservationRequestServiceIntegrationTest {
     private AvailabilityRepository availabilityRepository;
 
     @Autowired
-    private RestTemplate restTemplate; // real or conditional bean
-
-
-    @MockitoBean
-    private KafkaTemplate<String, String> kafkaTemplate; // mocked kafka template
-    @MockitoBean
-    private KafkaTemplate<String, ReservationCreatedEvent> reservationKafkaTemplate;
-
+    private RestTemplate restTemplate; // real RestTemplate bean
 
     @TestConfiguration
-    static class RestTemplateConfig {
+    static class TestConfig {
         @Bean
         @ConditionalOnMissingBean(RestTemplate.class)
         RestTemplate restTemplate() {
