@@ -22,3 +22,14 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+.vscode/
+.idea/
+
+# Gradle build folder
+/build/
+.gradle/
+Backend/Booking/gradle/*
+!Backend/Booking/gradle/wrapper/
+!Backend/Booking/gradle/wrapper/gradle-wrapper.jar
+!Backend/Booking/gradle/wrapper/gradle-wrapper.properties
